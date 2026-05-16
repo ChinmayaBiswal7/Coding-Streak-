@@ -349,9 +349,9 @@ const Profile = () => {
             <option value="all" style={{ background: '#111' }}>Universal (All)</option>
             <option value="leetcode" style={{ background: '#111' }}>LeetCode</option>
             <option value="codeforces" style={{ background: '#111' }}>Codeforces</option>
-            {userData.githubHandle && <option value="github" style={{ background: '#111' }}>GitHub</option>}
-            {userData.codechefHandle && <option value="codechef" style={{ background: '#111' }}>CodeChef</option>}
-            {userData.atcoderHandle && <option value="atcoder" style={{ background: '#111' }}>AtCoder</option>}
+            <option value="github" style={{ background: '#111' }}>GitHub</option>
+            <option value="codechef" style={{ background: '#111' }}>CodeChef</option>
+            <option value="atcoder" style={{ background: '#111' }}>AtCoder</option>
           </select>
         </div>
         <ActivityLineChart data={weekData} />
