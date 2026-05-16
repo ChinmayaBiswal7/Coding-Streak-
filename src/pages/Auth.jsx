@@ -47,17 +47,33 @@ const Auth = () => {
     const { getDoc, updateDoc } = await import('firebase/firestore')
     const docSnap = await getDoc(userRef)
     
+    // Generate a clean username (no spaces, lowercase)
+    const cleanUsername = (displayName || user.displayName || 'AnonymousCoder')
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_]/g, '')
+      .slice(0, 20) || 'AnonymousCoder'
+    
     if (docSnap.exists()) {
-      // If user already exists, just update their login time to not wipe their saved handles!
-      await updateDoc(userRef, {
-        lastLogin: serverTimestamp()
-      })
+      const existingData = docSnap.data()
+      // Patch missing username if old account doesn't have one
+      if (!existingData.username) {
+        await updateDoc(userRef, {
+          username: cleanUsername,
+          lastLogin: serverTimestamp()
+        })
+      } else {
+        // If user already exists, just update their login time
+        await updateDoc(userRef, {
+          lastLogin: serverTimestamp()
+        })
+      }
     } else {
       // First time login, create the template
       await setDoc(userRef, {
         uid: user.uid,
         email: user.email || '',
-        username: displayName || user.displayName || 'AnonymousCoder',
+        username: cleanUsername,
+        displayName: displayName || user.displayName || cleanUsername,
         leetcodeHandle: '',
         codeforcesHandle: '',
         githubHandle: '',

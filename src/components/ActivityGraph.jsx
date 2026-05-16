@@ -182,6 +182,8 @@ const ActivityGraph = ({ username, platform }) => {
     return finalWeeks
   }
 
+  if (!username || !platform) return <div className="glass-panel" style={{ padding: '24px', marginBottom: '40px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No platform selected.</div>
+
   const weeks = generateGrid()
   const pName = platform.charAt(0).toUpperCase() + platform.slice(1)
 

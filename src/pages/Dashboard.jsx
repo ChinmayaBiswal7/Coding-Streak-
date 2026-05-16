@@ -20,6 +20,7 @@ const Dashboard = () => {
   const [user, setUser] = useState(null)
   const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authChecked, setAuthChecked] = useState(false)
   
   // Connection Form State
   const [handles, setHandles] = useState({ leetcode: '', codeforces: '', github: '', codechef: '', atcoder: '' })
@@ -33,6 +34,7 @@ const Dashboard = () => {
   useEffect(() => {
     let unsubscribeDoc = null;
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      setAuthChecked(true)
       if (currentUser) {
         setUser(currentUser)
         const docRef = doc(db, 'users', currentUser.uid)
@@ -107,7 +109,7 @@ const Dashboard = () => {
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>Loading...</div>
+  if (!authChecked || loading) return <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>Loading...</div>
 
   // If NO handles are connected at all, show the Connect screen
   const hasAnyHandle = userData?.leetcodeHandle || userData?.codeforcesHandle || userData?.githubHandle || userData?.codechefHandle || userData?.atcoderHandle
@@ -158,8 +160,10 @@ const Dashboard = () => {
 
   const friends = userData?.friends || []
   
-  // Get active handle based on selected platform
-  const activeHandle = userData?.[`${activePlatform}Handle`]
+  // Get all connected platforms and ensure activePlatform is always valid
+  const connectedPlatforms = PLATFORMS.filter(p => userData?.[`${p.id}Handle`])
+  const validPlatform = connectedPlatforms.find(p => p.id === activePlatform) ? activePlatform : (connectedPlatforms[0]?.id || 'leetcode')
+  const activeHandle = userData?.[`${validPlatform}Handle`]
 
   return (
     <motion.div 
@@ -188,7 +192,7 @@ const Dashboard = () => {
           const isConnected = userData?.[`${p.id}Handle`]
           if (!isConnected) return null // Only show tabs for connected accounts
           
-          const isActive = activePlatform === p.id
+          const isActive = validPlatform === p.id
           return (
             <button
               key={p.id}
@@ -209,10 +213,10 @@ const Dashboard = () => {
         })}
       </div>
 
-      <ActivityGraph username={activeHandle} platform={activePlatform} />
+      <ActivityGraph username={activeHandle} platform={validPlatform} />
 
       <h3 style={{ marginBottom: '24px', fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Users size={24} color="var(--accent-primary)" /> {PLATFORMS.find(p=>p.id===activePlatform)?.name} Mutual Streaks
+        <Users size={24} color="var(--accent-primary)" /> {PLATFORMS.find(p=>p.id===validPlatform)?.name} Mutual Streaks
       </h3>
       
       {friends.length === 0 ? (
@@ -224,7 +228,7 @@ const Dashboard = () => {
         <div className="dashboard-grid">
           {friends.map((friendHandle, i) => (
             <motion.div key={`${friendHandle}-${activePlatform}`} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.1 }}>
-              <StreakCard friendHandle={friendHandle} myHandle={activeHandle} platform={activePlatform} />
+              <StreakCard friendHandle={friendHandle} myHandle={activeHandle} platform={validPlatform} />
             </motion.div>
           ))}
         </div>

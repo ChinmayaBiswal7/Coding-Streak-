@@ -12,8 +12,10 @@ const Profile = () => {
   const [user, setUser] = useState(null)
   const [userData, setUserData] = useState(null)
   const [followersCount, setFollowersCount] = useState(0)
-  const [followersList, setFollowersList] = useState([])
+  const [followersList, setFollowersList] = useState([])   // [{ username, displayName, syncedAvatar }]
+  const [followingList, setFollowingList] = useState([])   // [{ username, displayName, syncedAvatar }]
   const [loading, setLoading] = useState(true)
+  const [authChecked, setAuthChecked] = useState(false)
   
   const [activityCounts, setActivityCounts] = useState({ lc: {}, cf: {}, gh: {}, cc: {}, ac: {} })
   const [activeGraphPlatform, setActiveGraphPlatform] = useState('all')
@@ -32,6 +34,7 @@ const Profile = () => {
   useEffect(() => {
     setLoading(true)
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setAuthChecked(true)
       if (currentUser) {
         setUser(currentUser)
         
@@ -67,11 +70,37 @@ const Profile = () => {
               const querySnapshot = await getDocs(q)
               
               const followers = []
-              querySnapshot.forEach(doc => {
-                followers.push(doc.data().username)
+              querySnapshot.forEach(fdoc => {
+                const fd = fdoc.data()
+                followers.push({
+                  username: fd.username,
+                  displayName: fd.displayName || fd.username,
+                  syncedAvatar: fd.syncedAvatar || null
+                })
               })
               setFollowersList(followers)
               setFollowersCount(followers.length)
+            }
+
+            // Fetch Following (rich data for each friend username)
+            if (data.friends && data.friends.length > 0) {
+              const usersRef2 = collection(db, 'users')
+              const q2 = query(usersRef2, where('username', 'in', data.friends.slice(0, 10)))
+              const querySnapshot2 = await getDocs(q2)
+              const following = []
+              querySnapshot2.forEach(fdoc => {
+                const fd = fdoc.data()
+                following.push({
+                  username: fd.username,
+                  displayName: fd.displayName || fd.username,
+                  syncedAvatar: fd.syncedAvatar || null
+                })
+              })
+              // Preserve original order from friends array
+              const ordered = data.friends.map(uname =>
+                following.find(f => f.username === uname) || { username: uname, displayName: uname, syncedAvatar: null }
+              )
+              setFollowingList(ordered)
             }
 
             // Fetch Universal Graph Data (LeetCode + Codeforces)
@@ -86,6 +115,12 @@ const Profile = () => {
                 const profileData = await profileRes.json()
                 if (profileData.avatar) {
                   setUserData(prev => ({ ...prev, syncedAvatar: profileData.avatar }))
+                  // Persist to Firestore only on own profile so others see the real avatar
+                  if (!username) {
+                    try {
+                      await updateDoc(doc(db, 'users', currentUser.uid), { syncedAvatar: profileData.avatar })
+                    } catch(_) {}
+                  }
                 }
 
                 const res = await fetch(`https://alfa-leetcode-api.onrender.com/${data.leetcodeHandle}/calendar`)
@@ -155,11 +190,15 @@ const Profile = () => {
             }
 
             setActivityCounts(prev => ({ ...prev, lc: lcCounts, cf: cfCounts }))
+          } else if (!username) {
+            // Own profile doc doesn't exist yet in Firestore
+            console.warn('User Firestore document not found for uid:', currentUser.uid)
           }
         } catch (err) {
           console.error("Error fetching profile data", err)
         }
       } else {
+        // Only redirect if auth has been checked and user is truly not logged in
         navigate('/auth')
       }
       setLoading(false)
@@ -185,8 +224,14 @@ const Profile = () => {
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>Loading Profile...</div>
-  if (!userData) return <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>User not found.</div>
+  if (!authChecked || loading) return <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>Loading Profile...</div>
+  if (!userData) return (
+    <div style={{ textAlign: 'center', marginTop: '100px', color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: '3rem', marginBottom: '16px' }}>😕</div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '8px' }}>Profile Not Found</div>
+      <div style={{ fontSize: '1rem' }}>No user document found. Try signing out and back in.</div>
+    </div>
+  )
 
   // Calculate dynamic activity data based on selected platform
   const weekData = []
@@ -502,10 +547,17 @@ const Profile = () => {
               {(!userData.friends || userData.friends.length === 0) ? (
                 <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>{username ? 'They aren\'t following anyone.' : 'You aren\'t following anyone yet.'}</p>
               ) : (
-                userData.friends.map((friendName, idx) => (
-                  <Link to={`/profile/${friendName}`} key={idx} onClick={() => setShowFollowingModal(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', textDecoration: 'none', color: 'inherit', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${friendName}`} alt={friendName} style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-main)' }} />
-                    <span style={{ fontWeight: 600 }}>{friendName}</span>
+                followingList.map((friend, idx) => (
+                  <Link to={`/profile/${friend.username}`} key={idx} onClick={() => setShowFollowingModal(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', textDecoration: 'none', color: 'inherit', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <img
+                      src={friend.syncedAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend.username}`}
+                      alt={friend.displayName}
+                      style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-main)', objectFit: 'cover' }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 600 }}>{friend.displayName}</span>
+                      {friend.displayName !== friend.username && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>@{friend.username}</span>}
+                    </div>
                   </Link>
                 ))
               )}
@@ -525,10 +577,17 @@ const Profile = () => {
               {followersList.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>{username ? 'They don\'t have any followers yet.' : 'You don\'t have any followers yet.'}</p>
               ) : (
-                followersList.map((followerName, idx) => (
-                  <Link to={`/profile/${followerName}`} key={idx} onClick={() => setShowFollowersModal(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', textDecoration: 'none', color: 'inherit', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${followerName}`} alt={followerName} style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-main)' }} />
-                    <span style={{ fontWeight: 600 }}>{followerName}</span>
+                followersList.map((follower, idx) => (
+                  <Link to={`/profile/${follower.username}`} key={idx} onClick={() => setShowFollowersModal(false)} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', textDecoration: 'none', color: 'inherit', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'} onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+                    <img
+                      src={follower.syncedAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${follower.username}`}
+                      alt={follower.displayName}
+                      style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg-main)', objectFit: 'cover' }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 600 }}>{follower.displayName}</span>
+                      {follower.displayName !== follower.username && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>@{follower.username}</span>}
+                    </div>
                   </Link>
                 ))
               )}
